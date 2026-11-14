@@ -17,7 +17,14 @@ const RouterContext = createContext<RouterValue>({ path: '/', navigate: () => {}
 
 export const useRouter = () => useContext(RouterContext);
 
-const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+/* The site may be served from a sub-path (GitHub Pages). Routes inside the
+   app are always written as '/services' etc.; these helpers translate. */
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+const toApp = (pathname: string) =>
+  BASE && pathname.startsWith(BASE) ? pathname.slice(BASE.length) || '/' : pathname;
+export const toUrl = (path: string) => BASE + path;
+
+const nextFrame =() => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
 function jumpTo(hash: string, smooth = false) {
   const target = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
@@ -39,16 +46,16 @@ const TITLES: Record<string, string> = {
  * entry (bottom → top) so the motion reads as one continuous wipe.
  */
 export function RouterProvider({ children }: { children: ReactNode }) {
-  const [path, setPath] = useState(() => window.location.pathname);
+  const [path, setPath] = useState(() => toApp(window.location.pathname));
   const curtain = useRef<HTMLDivElement>(null);
   const busy = useRef(false);
 
   const go = useCallback(async (to: string, push: boolean) => {
     const url = new URL(to, window.location.origin);
-    const samePage = url.pathname === window.location.pathname;
+    const samePage = url.pathname === toApp(window.location.pathname);
 
     if (samePage) {
-      if (push) history.pushState(null, '', url.pathname + url.hash);
+      if (push) history.pushState(null, '', toUrl(url.pathname) + url.hash);
       jumpTo(url.hash, !prefersReducedMotion());
       return;
     }
@@ -69,7 +76,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       ).finished;
     }
 
-    if (push) history.pushState(null, '', url.pathname + url.hash);
+    if (push) history.pushState(null, '', toUrl(url.pathname) + url.hash);
     document.title = TITLES[url.pathname] ?? 'Atelier Auto';
     flushSync(() => setPath(url.pathname));
     jumpTo(url.hash);
@@ -89,8 +96,8 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    document.title = TITLES[window.location.pathname] ?? 'Atelier Auto';
-    const onPop = () => go(window.location.href, false);
+    document.title = TITLES[toApp(window.location.pathname)] ?? 'Atelier Auto';
+    const onPop = () => go(toApp(window.location.pathname) + window.location.hash, false);
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [go]);
@@ -116,7 +123,7 @@ export function Link({ to, onClick, ...rest }: LinkProps) {
   const isCurrent = to === path;
   return (
     <a
-      href={to}
+      href={toUrl(to)}
       aria-current={isCurrent ? 'page' : undefined}
       {...rest}
       onClick={(e) => {
